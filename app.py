@@ -333,7 +333,7 @@ with st.expander("🔧 연결 진단"):
         st.success("✅ gcp_service_account 키 존재")
         st.write("client_email:", st.secrets["gcp_service_account"].get("client_email", "없음"))
     else:
-        st.error("❌ gcp_service_account 키 없음 → Secrets 설정 확인 필요")
+        st.error("❌ gcp_service_account 키 없음")
 
     st.write("**2. 시트 연결 확인**")
     try:
@@ -341,11 +341,10 @@ with st.expander("🔧 연결 진단"):
         st.success("✅ Google 인증 성공")
         try:
             sh = gc.open("수열_폼_응답_통합")
-            st.success("✅ '수열_폼_응답_통합' 시트 연결 성공")
+            st.success("✅ 시트 연결 성공")
             tabs = [w.title for w in sh.worksheets()]
             st.write("탭 목록:", tabs)
         except Exception as e:
             st.error(f"❌ 시트 열기 실패: {e}")
-            st.write("→ 시트 이름이 정확한지, 서비스 계정에 공유됐는지 확인")
     except Exception as e:
         st.error(f"❌ Google 인증 실패: {e}")
