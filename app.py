@@ -325,3 +325,26 @@ with tab4:
             st.plotly_chart(fig4, use_container_width=True)
     else:
         st.info("타임스탬프 데이터를 찾을 수 없습니다.")
+# ── 임시 디버그 (확인 후 삭제) ──────────────────
+with st.expander("🔧 연결 진단"):
+    st.write("**1. Secrets 확인**")
+    if "gcp_service_account" in st.secrets:
+        st.success("✅ gcp_service_account 키 존재")
+        st.write("client_email:", st.secrets["gcp_service_account"].get("client_email", "없음"))
+    else:
+        st.error("❌ gcp_service_account 키 없음 → Secrets 설정 확인 필요")
+
+    st.write("**2. 시트 연결 확인**")
+    try:
+        gc = get_gc()
+        st.success("✅ Google 인증 성공")
+        try:
+            sh = gc.open("수열_폼_응답_통합")
+            st.success("✅ '수열_폼_응답_통합' 시트 연결 성공")
+            tabs = [w.title for w in sh.worksheets()]
+            st.write("탭 목록:", tabs)
+        except Exception as e:
+            st.error(f"❌ 시트 열기 실패: {e}")
+            st.write("→ 시트 이름이 정확한지, 서비스 계정에 공유됐는지 확인")
+    except Exception as e:
+        st.error(f"❌ Google 인증 실패: {e}")
