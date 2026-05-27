@@ -102,6 +102,28 @@ df = load_all_responses()
 
 if df.empty:
     st.warning("아직 응답 데이터가 없거나 시트 연결을 확인해주세요.")
+    # 진단 코드는 계속 실행
+    with st.expander("🔧 연결 진단"):
+        st.write("**1. Secrets 확인**")
+        if "gcp_service_account" in st.secrets:
+            st.success("✅ gcp_service_account 키 존재")
+            st.write("client_email:", st.secrets["gcp_service_account"].get("client_email", "없음"))
+        else:
+            st.error("❌ gcp_service_account 키 없음")
+
+        st.write("**2. 시트 연결 확인**")
+        try:
+            gc = get_gc()
+            st.success("✅ Google 인증 성공")
+            try:
+                sh = gc.open("수열_폼_응답_통합")
+                st.success("✅ 시트 연결 성공")
+                tabs = [w.title for w in sh.worksheets()]
+                st.write("탭 목록:", tabs)
+            except Exception as e:
+                st.error(f"❌ 시트 열기 실패: {e}")
+        except Exception as e:
+            st.error(f"❌ Google 인증 실패: {e}")
     st.stop()
 
 # ────────────────────────────────────────────────
