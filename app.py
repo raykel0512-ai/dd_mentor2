@@ -5,7 +5,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-
+st.write("👋 앱 로드됨")
+st.write(st.secrets)
 # ────────────────────────────────────────────────
 #  설정
 # ────────────────────────────────────────────────
