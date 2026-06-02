@@ -237,7 +237,7 @@ with tab2:
                     total_submitted = len(submitted_lessons)
                     row = {"이름": student, "제출 수": f"{total_submitted}/{len(all_lessons)}"}
                     for lesson in all_lessons:
-                        row[lesson[-6:]] = "✅" if lesson in submitted_lessons else "❌"
+                        row[lesson] = "✅" if lesson in submitted_lessons else "❌"
                     rows.append(row)
 
                 pivot_df = pd.DataFrame(rows)
@@ -259,8 +259,8 @@ with tab2:
                     missing_summary = []
                     for _, row in not_complete.iterrows():
                         missing_lessons = [
-                            l[-6:] for l in all_lessons
-                            if row.get(l[-6:], "❌") == "❌"
+                            l for l in all_lessons
+                            if row.get(l, "❌") == "❌"
                         ]
                         missing_summary.append(
                             f"**{row['이름']}**: {', '.join(missing_lessons)} 미제출"
