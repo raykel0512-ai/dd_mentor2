@@ -112,6 +112,20 @@ if df.empty:
             st.error("❌ gcp_service_account 키 없음")
 
         st.write("**2. 시트 연결 확인**")
+        st.write("**3. 첫 번째 탭 컬럼 확인**")
+        first_ws = sh.worksheets()[0]
+        first_data = first_ws.get_all_records()
+        if first_data:
+            st.write("컬럼명:", list(first_data[0].keys()))
+            st.write("첫 번째 행 샘플:", first_data[0])
+        else:
+            st.write("첫 번째 탭에 데이터 없음 — 다음 탭 확인")
+            for ws in sh.worksheets()[1:]:
+                data = ws.get_all_records()
+                if data:
+                    st.write(f"탭 '{ws.title}' 컬럼명:", list(data[0].keys()))
+                    st.write("샘플:", data[0])
+                    break
         try:
             gc = get_gc()
             st.success("✅ Google 인증 성공")
