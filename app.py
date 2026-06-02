@@ -102,7 +102,6 @@ df = load_all_responses()
 
 if df.empty:
     st.warning("아직 응답 데이터가 없거나 시트 연결을 확인해주세요.")
-    # 진단 코드는 계속 실행
     with st.expander("🔧 연결 진단"):
         st.write("**1. Secrets 확인**")
         if "gcp_service_account" in st.secrets:
@@ -111,29 +110,30 @@ if df.empty:
         else:
             st.error("❌ gcp_service_account 키 없음")
 
-        st.write("**2. 시트 연결 확인**")
-        st.write("**3. 첫 번째 탭 컬럼 확인**")
-        first_ws = sh.worksheets()[0]
-        first_data = first_ws.get_all_records()
-        if first_data:
-            st.write("컬럼명:", list(first_data[0].keys()))
-            st.write("첫 번째 행 샘플:", first_data[0])
-        else:
-            st.write("첫 번째 탭에 데이터 없음 — 다음 탭 확인")
-            for ws in sh.worksheets()[1:]:
-                data = ws.get_all_records()
-                if data:
-                    st.write(f"탭 '{ws.title}' 컬럼명:", list(data[0].keys()))
-                    st.write("샘플:", data[0])
-                    break
+        st.write("**2. 시트 연결 및 컬럼 확인**")
         try:
-            gc = get_gc()
+            gc2 = get_gc()
             st.success("✅ Google 인증 성공")
             try:
-                sh = gc.open("수열_폼_응답_통합")
+                sh2 = gc2.open("수열_폼_응답_통합")
                 st.success("✅ 시트 연결 성공")
-                tabs = [w.title for w in sh.worksheets()]
-                st.write("탭 목록:", tabs)
+                tabs2 = [w.title for w in sh2.worksheets()]
+                st.write("탭 목록:", tabs2)
+
+                # 데이터 있는 첫 탭 찾아서 컬럼 확인
+                st.write("**3. 컬럼명 확인**")
+                for ws in sh2.worksheets():
+                    try:
+                        data = ws.get_all_records()
+                        if data:
+                            st.write(f"탭 `{ws.title}` 컬럼명:")
+                            st.write(list(data[0].keys()))
+                            st.write("첫 번째 행 샘플:")
+                            st.write(data[0])
+                            break
+                    except Exception as e:
+                        st.write(f"탭 `{ws.title}` 읽기 실패: {e}")
+                        continue
             except Exception as e:
                 st.error(f"❌ 시트 열기 실패: {e}")
         except Exception as e:
