@@ -49,21 +49,24 @@ def load_all_responses():
     except Exception as e:
         return pd.DataFrame()
 
-    # 차시 순서 매핑 ("Form Responses N" → "N차시")
-    # 탭 순서가 곧 차시 순서라고 가정
+# 차시 순서 매핑 — 모든 탭을 순서대로 번호 부여
     all_ws = sh.worksheets()
     lesson_map = {}
     lesson_counter = 1
     for ws in all_ws:
         title = ws.title
-        # "XX_차시명" 형식이면 그대로 사용
         if "_" in title and not title.startswith("Form Responses"):
+            # "01_1차시 - 수열의 뜻" 형식 → "1차시 - 수열의 뜻"
             lesson_map[title] = title.split("_", 1)[1]
-        # "Form Responses N" 형식이면 순서로 차시 부여
-        elif title.startswith("Form Responses"):
+        elif title.startswith("Form Responses") or title.startswith("폼 응답"):
+            # "Form Responses N" → "N차시"
             lesson_map[title] = str(lesson_counter) + "차시"
             lesson_counter += 1
+        elif "차시" in title:
+            # "01차시", "1차시" 등 다양한 형식
+            lesson_map[title] = title
         else:
+            # 그 외 (빈 탭 등) → 그대로
             lesson_map[title] = title
 
     all_dfs = []
