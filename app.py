@@ -42,9 +42,8 @@ def get_gc():
     )
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=300)  # 5분마다 갱신
+@st.cache_data(ttl=300)
 def load_all_responses():
-    """모든 차시 응답을 하나의 DataFrame으로 통합"""
     gc = get_gc()
     try:
         sh = gc.open("수열_폼_응답_통합")
@@ -55,20 +54,57 @@ def load_all_responses():
     all_dfs = []
     for worksheet in sh.worksheets():
         try:
-            data = worksheet.get_all_records()
-            if not data:
+            # get_all_values로 raw 데이터 읽기 (중복 컬럼 문제 우회)
+            raw = worksheet.get_all_values()
+            if len(raw) < 2:
                 continue
-            df = pd.DataFrame(data)
 
-            # 차시 이름 추출 (탭 이름 기준: "01_1차시 - ...")
+            headers = raw[0]
+            rows = raw[1:]
+
+            # 중복 컬럼 처리 — 뒤에 _2, _3 붙이기
+            seen = {}
+            clean_headers = []
+            for h in headers:
+                if h in seen:
+                    seen[h] += 1
+                    clean_headers.append(f"{h}_{seen[h]}")
+                else:
+                    seen[h] = 1
+                    clean_headers.append(h)
+
+            df = pd.DataFrame(rows, columns=clean_headers)
+
+            # 빈 행 제거
+            df = df[df.iloc[:, 0] != ""].copy()
+            if df.empty:
+                continue
+
+            # 차시 이름
             lesson_title = worksheet.title
             if "_" in lesson_title:
                 lesson_title = lesson_title.split("_", 1)[1]
             df["차시"] = lesson_title
 
-            # 컬럼명 표준화 (폼마다 약간 다를 수 있음)
-            df.columns = [c.strip() for c in df.columns]
+            # ★ 핵심: 중복된 "본인 이름", "도움 준 멘토 이름" 통합
+            # 5반은 "본인 이름", 6반은 "본인 이름_2" 에 값이 들어있음
+            # 둘 중 비어있지 않은 값을 사용
+            for base_col in ["본인 이름", "도움 준 멘토 이름"]:
+                dup_col = base_col + "_2"
+                if base_col in df.columns and dup_col in df.columns:
+                    df[base_col] = df[base_col].replace("", pd.NA).fillna(df[dup_col])
+                    df.drop(columns=[dup_col], inplace=True)
+                elif dup_col in df.columns and base_col not in df.columns:
+                    df.rename(columns={dup_col: base_col}, inplace=True)
+
+            # 타임스탬프 파싱
+            ts_col = clean_headers[0]  # 첫 번째 컬럼이 보통 타임스탬프
+            if ts_col:
+                df.rename(columns={ts_col: "타임스탬프"}, inplace=True)
+                df["타임스탬프"] = pd.to_datetime(df["타임스탬프"], errors="coerce")
+
             all_dfs.append(df)
+
         except Exception as e:
             continue
 
@@ -76,14 +112,7 @@ def load_all_responses():
         return pd.DataFrame()
 
     combined = pd.concat(all_dfs, ignore_index=True)
-
-    # 타임스탬프 파싱
-    if "타임스탬프" in combined.columns:
-        combined["타임스탬프"] = pd.to_datetime(
-            combined["타임스탬프"], errors="coerce"
-        )
     return combined
-
 # ────────────────────────────────────────────────
 #  UI
 # ────────────────────────────────────────────────
