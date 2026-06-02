@@ -49,8 +49,25 @@ def load_all_responses():
     except Exception as e:
         return pd.DataFrame()
 
+    # 차시 순서 매핑 ("Form Responses N" → "N차시")
+    # 탭 순서가 곧 차시 순서라고 가정
+    all_ws = sh.worksheets()
+    lesson_map = {}
+    lesson_counter = 1
+    for ws in all_ws:
+        title = ws.title
+        # "XX_차시명" 형식이면 그대로 사용
+        if "_" in title and not title.startswith("Form Responses"):
+            lesson_map[title] = title.split("_", 1)[1]
+        # "Form Responses N" 형식이면 순서로 차시 부여
+        elif title.startswith("Form Responses"):
+            lesson_map[title] = str(lesson_counter) + "차시"
+            lesson_counter += 1
+        else:
+            lesson_map[title] = title
+
     all_dfs = []
-    for worksheet in sh.worksheets():
+    for worksheet in all_ws:
         try:
             raw = worksheet.get_all_values()
             if len(raw) < 2:
@@ -75,15 +92,8 @@ def load_all_responses():
             if df.empty:
                 continue
 
-            # 차시 이름 정리 (3. "Form Responses 문제 해결)
-            lesson_title = worksheet.title
-            # "01_1차시 - 수열의 뜻" 형식이면 앞 번호 제거
-            if "_" in lesson_title:
-                lesson_title = lesson_title.split("_", 1)[1]
-            # "Form Responses N" 형식이면 탭 순서로 차시 표기
-            if lesson_title.startswith("Form Responses"):
-                lesson_title = worksheet.title
-            df["차시"] = lesson_title
+            # 차시명 매핑 적용
+            df["차시"] = lesson_map.get(worksheet.title, worksheet.title)
 
             # 중복 컬럼 통합
             for base_col in ["본인 이름", "도움 준 멘토 이름"]:
