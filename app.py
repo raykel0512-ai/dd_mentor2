@@ -536,20 +536,20 @@ with tab3:
 
             with col_list:
                 top15 = mentor_counts.head(15)
-                for i, row in enumerate(top15.itertuples()):
+                for i, (_, row) in enumerate(top15.iterrows()):
                     rank_icons = ["🥇","🥈","🥉"] + ["🌟"] * 12
                     r_icon = rank_icons[i]
-                    bar_pct = int(row.포인트 / top15["포인트"].max() * 100)
+                    bar_pct = int(row["포인트"] / top15["포인트"].max() * 100)
                     st.markdown(f"""
                     <div class="mentor-card">
                         <div class="m-rank">{r_icon}</div>
                         <div class="m-info">
-                            <div class="m-name">{getattr(row, mentor_col)}</div>
+                            <div class="m-name">{row[mentor_col]}</div>
                             <div style="background:#0F0F1A;border-radius:4px;height:6px;margin:0.3rem 0">
                                 <div style="width:{bar_pct}%;height:6px;border-radius:4px;background:linear-gradient(90deg,#7C3AED,#A78BFA)"></div>
                             </div>
                         </div>
-                        <div class="m-score">+{row.포인트}pt</div>
+                        <div class="m-score">+{row."포인트"}pt</div>
                     </div>
                     """, unsafe_allow_html=True)
 
