@@ -549,7 +549,7 @@ with tab3:
                                 <div style="width:{bar_pct}%;height:6px;border-radius:4px;background:linear-gradient(90deg,#7C3AED,#A78BFA)"></div>
                             </div>
                         </div>
-                        <div class="m-score">+{row."포인트"}pt</div>
+                        <div class="m-score">+{row["포인트"]}pt</div>
                     </div>
                     """, unsafe_allow_html=True)
 
