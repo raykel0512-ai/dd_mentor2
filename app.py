@@ -3,18 +3,23 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import plotly.graph_objects as go
 
 # ────────────────────────────────────────────────
 #  설정
 # ────────────────────────────────────────────────
 st.set_page_config(
-    page_title="수열 학습 대시보드",
-    page_icon="📊",
+    page_title="수열 학습 RPG",
+    page_icon="🎮",
     layout="wide"
 )
 
+# ────────────────────────────────────────────────
+#  RPG 시스템 설정
+# ────────────────────────────────────────────────
+TOTAL_LESSONS = 19
 NO_MENTOR = "멘토 없음 / 혼자 풀었음"
+
 ALL_STUDENTS = {
     "2학년 5반": ["곽민석","김다율","김제니아","백종우","이시원",
                   "조건희","최민준","최은호","김서진","김채은",
@@ -25,7 +30,209 @@ ALL_STUDENTS = {
                   "류효연","송민경","안혜준","안효은","이다인",
                   "이연서","이예은","전하은","정연아"]
 }
-TOTAL_LESSONS = 19
+
+LEVEL_TABLE = [
+    (0,  2,  1, "🌱", "수학 새싹",     "EF9A9A"),
+    (3,  5,  2, "📚", "성실한 학습자", "FFB74D"),
+    (6,  9,  3, "⚔️", "베테랑 수학자", "FFF176"),
+    (10, 14, 4, "🌟", "수열 마스터",   "81C784"),
+    (15, 19, 5, "👑", "전설의 수학왕", "64B5F6"),
+]
+
+def get_level_info(count):
+    for mn, mx, lv, icon, title, color in LEVEL_TABLE:
+        if mn <= count <= mx:
+            xp_in_level = count - mn
+            xp_needed   = mx - mn + 1
+            return lv, icon, title, color, xp_in_level, xp_needed
+    lv, icon, title, color = 5, "👑", "전설의 수학왕", "64B5F6"
+    return lv, icon, title, color, TOTAL_LESSONS, TOTAL_LESSONS
+
+# ────────────────────────────────────────────────
+#  CSS
+# ────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Noto Sans KR', sans-serif;
+}
+
+/* 배경 */
+.stApp { background: #0F0F1A; }
+[data-testid="stSidebar"] { background: #16162A; border-right: 1px solid #2A2A4A; }
+
+/* 헤더 타이틀 */
+.rpg-header {
+    text-align: center;
+    padding: 1.5rem 0 0.5rem;
+}
+.rpg-header h1 {
+    font-size: 2.4rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #A78BFA, #60A5FA, #34D399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0;
+    letter-spacing: -0.5px;
+}
+.rpg-header p {
+    color: #6B7280;
+    font-size: 0.85rem;
+    margin: 0.3rem 0 0;
+}
+
+/* 탭 */
+[data-testid="stTabs"] button {
+    color: #6B7280 !important;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #A78BFA !important;
+    border-bottom-color: #A78BFA !important;
+}
+
+/* 메트릭 카드 */
+.metric-card {
+    background: #16162A;
+    border: 1px solid #2A2A4A;
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    text-align: center;
+}
+.metric-card .val {
+    font-size: 2rem;
+    font-weight: 900;
+    color: #E0E7FF;
+}
+.metric-card .lbl {
+    font-size: 0.75rem;
+    color: #6B7280;
+    margin-top: 0.2rem;
+}
+
+/* 플레이어 카드 */
+.player-card {
+    background: #16162A;
+    border: 1px solid #2A2A4A;
+    border-radius: 14px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 0.6rem;
+    transition: border-color 0.2s;
+}
+.player-card:hover { border-color: #4C4CA0; }
+.player-card .name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.45rem;
+}
+.player-card .rank {
+    font-size: 0.8rem;
+    color: #6B7280;
+    min-width: 1.5rem;
+}
+.player-card .icon { font-size: 1.1rem; }
+.player-card .name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #E0E7FF;
+    flex: 1;
+}
+.player-card .lv-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 20px;
+    background: #1E1E3A;
+    color: #A78BFA;
+    border: 1px solid #3B3B6A;
+}
+.player-card .title-text {
+    font-size: 0.72rem;
+    color: #6B7280;
+    margin-bottom: 0.4rem;
+    padding-left: 1.9rem;
+}
+
+/* XP 바 */
+.xp-bar-wrap {
+    background: #0F0F1A;
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+    margin: 0.1rem 0 0.3rem;
+}
+.xp-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.5s ease;
+}
+.xp-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.68rem;
+    color: #4B5563;
+}
+
+/* 반 카드 */
+.class-card {
+    background: #16162A;
+    border: 1px solid #2A2A4A;
+    border-radius: 14px;
+    padding: 1.2rem 1.4rem;
+}
+.class-card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #E0E7FF;
+    margin: 0 0 0.8rem;
+}
+
+/* 멘토 카드 */
+.mentor-card {
+    background: #16162A;
+    border: 1px solid #2A2A4A;
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+.mentor-card .m-rank {
+    font-size: 1.2rem;
+    min-width: 2rem;
+    text-align: center;
+}
+.mentor-card .m-info { flex: 1; }
+.mentor-card .m-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #E0E7FF;
+}
+.mentor-card .m-score {
+    font-size: 0.8rem;
+    color: #A78BFA;
+    font-weight: 700;
+}
+
+/* 알림 배너 */
+.warn-box {
+    background: #1A1A0F;
+    border: 1px solid #3D3A00;
+    border-radius: 10px;
+    padding: 0.7rem 1rem;
+    color: #FCD34D;
+    font-size: 0.82rem;
+    margin-bottom: 1rem;
+}
+
+div[data-testid="stVerticalBlock"] { gap: 0 !important; }
+</style>
+""", unsafe_allow_html=True)
 
 # ────────────────────────────────────────────────
 #  구글 시트 연결
@@ -46,382 +253,435 @@ def load_all_responses():
     gc = get_gc()
     try:
         sh = gc.open("수열_폼_응답_통합")
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
-# 차시 순서 매핑 — 모든 탭을 순서대로 번호 부여
-    all_ws = sh.worksheets()
-    lesson_map = {}
-    lesson_counter = 1
-    for ws in all_ws:
-        title = ws.title
-        if "_" in title and not title.startswith("Form Responses"):
-            # "01_1차시 - 수열의 뜻" 형식 → "1차시 - 수열의 뜻"
-            lesson_map[title] = title.split("_", 1)[1]
-        elif title.startswith("Form Responses") or title.startswith("폼 응답"):
-            # "Form Responses N" → "N차시"
-            lesson_map[title] = str(lesson_counter) + "차시"
-            lesson_counter += 1
-        elif "차시" in title:
-            # "01차시", "1차시" 등 다양한 형식
-            lesson_map[title] = title
-        else:
-            # 그 외 (빈 탭 등) → 그대로
-            lesson_map[title] = title
-
     all_dfs = []
-    for worksheet in all_ws:
+    for ws in sh.worksheets():
         try:
-            raw = worksheet.get_all_values()
+            raw = ws.get_all_values()
             if len(raw) < 2:
                 continue
-
             headers = raw[0]
-            rows = raw[1:]
-
-            # 중복 컬럼 처리
             seen = {}
-            clean_headers = []
+            clean = []
             for h in headers:
-                if h in seen:
-                    seen[h] += 1
-                    clean_headers.append(f"{h}_{seen[h]}")
-                else:
-                    seen[h] = 1
-                    clean_headers.append(h)
+                seen[h] = seen.get(h, 0) + 1
+                clean.append(h if seen[h] == 1 else f"{h}_{seen[h]}")
 
-            df = pd.DataFrame(rows, columns=clean_headers)
+            df = pd.DataFrame(raw[1:], columns=clean)
             df = df[df.iloc[:, 0] != ""].copy()
             if df.empty:
                 continue
 
-            # 차시명 매핑 적용
-            df["차시"] = lesson_map.get(worksheet.title, worksheet.title)
+            tab = ws.title
+            df["차시"] = tab.split("_", 1)[1] if "_" in tab and not tab.startswith("Form") else tab
 
-            # 중복 컬럼 통합
-            for base_col in ["본인 이름", "도움 준 멘토 이름"]:
-                dup_col = base_col + "_2"
-                if base_col in df.columns and dup_col in df.columns:
-                    df[base_col] = df[base_col].replace("", pd.NA).fillna(df[dup_col])
-                    df.drop(columns=[dup_col], inplace=True)
-                elif dup_col in df.columns and base_col not in df.columns:
-                    df.rename(columns={dup_col: base_col}, inplace=True)
+            for base in ["본인 이름", "도움 준 멘토 이름"]:
+                dup = base + "_2"
+                if base in df.columns and dup in df.columns:
+                    df[base] = df[base].replace("", pd.NA).fillna(df[dup])
+                    df.drop(columns=[dup], inplace=True)
+                elif dup in df.columns:
+                    df.rename(columns={dup: base}, inplace=True)
 
-            # 타임스탬프
-            ts_col = clean_headers[0]
-            if ts_col:
-                df.rename(columns={ts_col: "타임스탬프"}, inplace=True)
-                df["타임스탬프"] = pd.to_datetime(df["타임스탬프"], errors="coerce")
-
+            ts = clean[0]
+            df.rename(columns={ts: "타임스탬프"}, inplace=True)
+            df["타임스탬프"] = pd.to_datetime(df["타임스탬프"], errors="coerce")
             all_dfs.append(df)
         except Exception:
             continue
 
-    if not all_dfs:
-        return pd.DataFrame()
-    return pd.concat(all_dfs, ignore_index=True)
+    return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+
+# ────────────────────────────────────────────────
+#  헬퍼
+# ────────────────────────────────────────────────
+def xp_bar_html(count, color_hex):
+    lv, icon, title, color, xp_in, xp_need = get_level_info(count)
+    pct = min(int(xp_in / xp_need * 100), 100)
+    return f"""
+    <div class="xp-bar-wrap">
+        <div class="xp-bar-fill" style="width:{pct}%;background:#{color_hex};"></div>
+    </div>
+    <div class="xp-label">
+        <span>{xp_in}/{xp_need} XP</span>
+        <span>다음 레벨까지 {xp_need - xp_in} XP</span>
+    </div>
+    """
+
+def medal(rank):
+    return ["🥇","🥈","🥉"][rank] if rank < 3 else f"{rank+1}위"
 
 # ────────────────────────────────────────────────
 #  헤더
 # ────────────────────────────────────────────────
-st.title("📊 수열 학습 대시보드")
-st.caption("대동세무고등학교 · 대수 | 데이터는 5분마다 자동 갱신됩니다")
+st.markdown("""
+<div class="rpg-header">
+    <h1>🎮 수열 학습 RPG 대시보드</h1>
+    <p>대동세무고등학교 · 대수 | 데이터는 5분마다 자동 갱신됩니다</p>
+</div>
+""", unsafe_allow_html=True)
 
-col_title, col_btn = st.columns([6, 1])
-with col_btn:
-    if st.button("🔄 새로고침"):
-        st.cache_data.clear()
-        st.rerun()
-
-df = load_all_responses()
-
-if df.empty:
-    st.warning("아직 응답 데이터가 없습니다.")
-    st.stop()
+st.markdown("<br>", unsafe_allow_html=True)
 
 # ────────────────────────────────────────────────
-#  사이드바 필터
+#  사이드바
 # ────────────────────────────────────────────────
 with st.sidebar:
-    st.header("🔍 필터")
+    st.markdown("### 🔍 필터")
     class_filter = st.multiselect(
         "반 선택",
         options=list(ALL_STUDENTS.keys()),
         default=list(ALL_STUDENTS.keys())
     )
-    st.divider()
-    st.caption(f"전체 응답 수: {len(df)}건")
-    if "타임스탬프" in df.columns:
-        latest = df["타임스탬프"].max()
-        if pd.notna(latest):
-            st.caption(f"최근 응답: {latest.strftime('%m/%d %H:%M')}")
+    if st.button("🔄 새로고침"):
+        st.cache_data.clear()
+        st.rerun()
 
-# 반 필터 적용
+    st.divider()
+    st.markdown("### 🏆 레벨 가이드")
+    for mn, mx, lv, icon, title, color in LEVEL_TABLE:
+        st.markdown(
+            f'<div style="font-size:0.8rem;color:#9CA3AF;padding:0.2rem 0">'
+            f'{icon} <b style="color:#E0E7FF">Lv.{lv}</b> {title}<br>'
+            f'<span style="color:#4B5563;font-size:0.7rem">{mn}~{mx}차시 제출</span></div>',
+            unsafe_allow_html=True
+        )
+
+# ────────────────────────────────────────────────
+#  데이터 로드
+# ────────────────────────────────────────────────
+df = load_all_responses()
+
+if df.empty:
+    st.markdown('<div class="warn-box">⚠️ 아직 응답 데이터가 없거나 시트 연결을 확인해주세요.</div>', unsafe_allow_html=True)
+    st.stop()
+
 if "반" in df.columns and class_filter:
-    df_filtered = df[df["반"].isin(class_filter)]
+    df_f = df[df["반"].isin(class_filter)].copy()
 else:
-    df_filtered = df.copy()
+    df_f = df.copy()
+
+all_lessons = sorted(df_f["차시"].unique().tolist()) if "차시" in df_f.columns else []
+
+# ────────────────────────────────────────────────
+#  상단 요약 지표
+# ────────────────────────────────────────────────
+total_students = sum(len(v) for k, v in ALL_STUDENTS.items() if k in class_filter)
+submitted_names = df_f["본인 이름"].nunique() if "본인 이름" in df_f.columns else 0
+total_responses = len(df_f)
+mentor_col = next((c for c in ["도움 준 멘토 이름","멘토 이름"] if c in df_f.columns), None)
+mentor_count = int(df_f[mentor_col].notna().sum()) if mentor_col else 0
+
+c1, c2, c3, c4 = st.columns(4)
+for col, val, lbl in [
+    (c1, total_responses, "총 제출 수"),
+    (c2, f"{submitted_names}/{total_students}", "참여 학생"),
+    (c3, len(all_lessons), "진행 차시"),
+    (c4, mentor_count, "멘토 지목 수"),
+]:
+    col.markdown(f"""
+    <div class="metric-card">
+        <div class="val">{val}</div>
+        <div class="lbl">{lbl}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 # ────────────────────────────────────────────────
 #  탭
 # ────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📋 차시별 제출 현황",
-    "👤 개인별 제출 현황",   # ← 새로 추가
-    "🏆 멘토 점수 순위",
-    "👥 반별 참여율",
-    "📅 시간대별 응답"
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🗺️ 전체 현황",
+    "⚔️ 개인 레벨",
+    "👑 멘토 랭킹",
+    "🏰 반별 현황",
 ])
 
-# ────────── 탭 1: 차시별 제출 현황 ──────────
+# ══════════════════════════════════════════════
+#  탭 1: 전체 현황
+# ══════════════════════════════════════════════
 with tab1:
-    st.subheader("차시별 제출 횟수")
+    st.markdown("#### 📊 차시별 제출 현황")
 
-    if "차시" in df_filtered.columns:
+    if "차시" in df_f.columns:
         lesson_counts = (
-            df_filtered.groupby("차시")
-            .size()
+            df_f.groupby("차시").size()
             .reset_index(name="제출 수")
             .sort_values("차시")
         )
-
         fig = px.bar(
-            lesson_counts,
-            x="차시",
-            y="제출 수",
+            lesson_counts, x="차시", y="제출 수",
             color="제출 수",
-            color_continuous_scale="Blues",
+            color_continuous_scale=[[0,"#2D1B69"],[0.5,"#7C3AED"],[1,"#A78BFA"]],
             text="제출 수",
         )
-        fig.update_traces(textposition="outside")
+        fig.update_traces(textposition="outside", marker_line_width=0)
         fig.update_layout(
-            xaxis_tickangle=-45,
-            showlegend=False,
-            height=420,
+            paper_bgcolor="#0F0F1A", plot_bgcolor="#0F0F1A",
+            font_color="#9CA3AF",
+            xaxis=dict(tickangle=-45, gridcolor="#1E1E3A", tickfont_color="#6B7280"),
+            yaxis=dict(gridcolor="#1E1E3A", tickfont_color="#6B7280"),
             coloraxis_showscale=False,
-            xaxis_title="차시",
-            yaxis_title="제출 수"
+            height=340, margin=dict(t=20, b=60),
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        total_students = sum(len(v) for k, v in ALL_STUDENTS.items() if k in class_filter)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("전체 응답 수", len(df_filtered))
-        c2.metric("차시당 평균", f"{lesson_counts['제출 수'].mean():.1f}")
-        c3.metric("최다 제출 차시",
-                  lesson_counts.loc[lesson_counts['제출 수'].idxmax(), '차시'][-8:])
-        c4.metric("필터 학생 수", f"{total_students}명")
+    # 레벨 분포
+    if "본인 이름" in df_f.columns:
+        st.markdown("#### 🎮 레벨 분포 현황")
+        student_counts = df_f.groupby("본인 이름")["차시"].nunique()
+        level_dist = {f"Lv.{lv} {icon} {title}": 0 for _, _, lv, icon, title, _ in LEVEL_TABLE}
+        for name, cnt in student_counts.items():
+            lv, icon, title, *_ = get_level_info(cnt)
+            key = f"Lv.{lv} {icon} {title}"
+            level_dist[key] = level_dist.get(key, 0) + 1
 
-# ────────── 탭 2: 개인별 제출 현황 (신규) ──────────
+        cols = st.columns(5)
+        for i, (mn, mx, lv, icon, title, color) in enumerate(LEVEL_TABLE):
+            key = f"Lv.{lv} {icon} {title}"
+            cnt = level_dist.get(key, 0)
+            cols[i].markdown(f"""
+            <div class="metric-card">
+                <div style="font-size:1.8rem">{icon}</div>
+                <div class="val" style="font-size:1.5rem;color:#{color}">{cnt}명</div>
+                <div class="lbl">Lv.{lv} {title}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════
+#  탭 2: 개인 레벨
+# ══════════════════════════════════════════════
 with tab2:
-    st.subheader("👤 개인별 제출 현황")
-    st.caption("학생별로 몇 차시를 제출했는지 확인합니다. 빈칸이 있으면 미제출 차시예요.")
-
-    if "본인 이름" not in df_filtered.columns or "차시" not in df_filtered.columns:
-        st.info("본인 이름 또는 차시 데이터를 찾을 수 없습니다.")
+    if "본인 이름" not in df_f.columns or "차시" not in df_f.columns:
+        st.info("본인 이름 데이터를 찾을 수 없습니다.")
     else:
-        # 전체 차시 목록
-        all_lessons = sorted(df_filtered["차시"].unique().tolist())
-
-        # 반 탭으로 나누기
-        class_tabs = st.tabs(list(ALL_STUDENTS.keys()))
-        for cls_idx, (class_name, students) in enumerate(ALL_STUDENTS.items()):
+        for class_name in ALL_STUDENTS:
             if class_name not in class_filter:
                 continue
-            with class_tabs[cls_idx]:
-                class_df = df_filtered[df_filtered["반"] == class_name] \
-                    if "반" in df_filtered.columns else df_filtered
 
-                # 학생 × 차시 피벗 테이블
-                rows = []
-                for student in students:
-                    student_df = class_df[class_df["본인 이름"] == student]
-                    submitted_lessons = set(student_df["차시"].unique())
-                    total_submitted = len(submitted_lessons)
-                    row = {"이름": student, "제출 수": f"{total_submitted}/{len(all_lessons)}"}
-                    for lesson in all_lessons:
-                        row[lesson] = "✅" if lesson in submitted_lessons else "❌"
-                    rows.append(row)
+            st.markdown(f"#### {class_name}")
+            students = ALL_STUDENTS[class_name]
+            class_df = df_f[df_f["반"] == class_name] if "반" in df_f.columns else df_f
 
-                pivot_df = pd.DataFrame(rows)
+            # 각 학생 제출 수 계산
+            student_data = []
+            for name in students:
+                s_df = class_df[class_df["본인 이름"] == name]
+                cnt = s_df["차시"].nunique()
+                lv, icon, title, color, xp_in, xp_need = get_level_info(cnt)
+                student_data.append((name, cnt, lv, icon, title, color, xp_in, xp_need))
 
-                # 제출 수 기준 정렬
-                pivot_df["_sort"] = pivot_df["제출 수"].apply(
-                    lambda x: int(x.split("/")[0])
-                )
-                pivot_df = pivot_df.sort_values("_sort", ascending=False).drop(columns=["_sort"])
+            # 레벨 높은 순 정렬
+            student_data.sort(key=lambda x: (-x[2], -x[1]))
 
-                st.dataframe(pivot_df, hide_index=True, use_container_width=True)
+            col_a, col_b = st.columns(2)
+            for i, (name, cnt, lv, icon, title, color, xp_in, xp_need) in enumerate(student_data):
+                pct = min(int(xp_in / xp_need * 100), 100)
+                is_max = cnt == TOTAL_LESSONS
 
-                # 미제출 학생 요약
-                not_complete = pivot_df[
-                    pivot_df["제출 수"].apply(lambda x: int(x.split("/")[0])) < len(all_lessons)
-                ]
-                if not not_complete.empty:
-                    st.warning(f"⚠️ 미완료 학생 {len(not_complete)}명")
-                    missing_summary = []
-                    for _, row in not_complete.iterrows():
-                        missing_lessons = [
-                            l for l in all_lessons
-                            if row.get(l, "❌") == "❌"
-                        ]
-                        missing_summary.append(
-                            f"**{row['이름']}**: {', '.join(missing_lessons)} 미제출"
-                        )
-                    with st.expander("미제출 상세 보기"):
-                        for s in missing_summary:
-                            st.markdown(s)
-                else:
-                    st.success(f"✅ {class_name} 전원 모든 차시 제출 완료!")
+                card_html = f"""
+                <div class="player-card" style="{'border-color:#F59E0B' if is_max else ''}">
+                    <div class="name-row">
+                        <span class="rank">{medal(i)}</span>
+                        <span class="icon">{icon}</span>
+                        <span class="name">{name}</span>
+                        <span class="lv-badge">Lv.{lv}</span>
+                    </div>
+                    <div class="title-text">{title} · {cnt}/{TOTAL_LESSONS} 차시</div>
+                    <div class="xp-bar-wrap">
+                        <div class="xp-bar-fill" style="width:{pct}%;background:#{color};"></div>
+                    </div>
+                    <div class="xp-label">
+                        <span>{xp_in}/{xp_need} XP</span>
+                        <span>{'✨ MAX!' if is_max else f'다음까지 {xp_need - xp_in} XP'}</span>
+                    </div>
+                </div>
+                """
+                target = col_a if i % 2 == 0 else col_b
+                target.markdown(card_html, unsafe_allow_html=True)
 
-                # 개인별 제출 수 막대그래프
-                bar_df = pivot_df[["이름", "제출 수"]].copy()
-                bar_df["제출 수(숫자)"] = bar_df["제출 수"].apply(
-                    lambda x: int(x.split("/")[0])
-                )
-                fig_personal = px.bar(
-                    bar_df.sort_values("제출 수(숫자)"),
-                    x="제출 수(숫자)",
-                    y="이름",
-                    orientation="h",
-                    color="제출 수(숫자)",
-                    color_continuous_scale="Blues",
-                    text="제출 수",
-                    range_color=[0, len(all_lessons)],
-                    title=f"{class_name} 개인별 제출 현황"
-                )
-                fig_personal.update_traces(textposition="outside")
-                fig_personal.update_layout(
-                    coloraxis_showscale=False,
-                    height=500,
-                    xaxis_title="제출 차시 수",
-                    yaxis_title=""
-                )
-                st.plotly_chart(fig_personal, use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-# ────────── 탭 3: 멘토 점수 순위 ──────────
+# ══════════════════════════════════════════════
+#  탭 3: 멘토 랭킹
+# ══════════════════════════════════════════════
 with tab3:
-    st.subheader("🏆 멘토 점수 순위")
-    st.caption("도움 준 멘토로 지목된 횟수 (본인 지목 제외)")
-
-    mentor_col = next(
-        (c for c in ["도움 준 멘토 이름", "멘토 이름"] if c in df_filtered.columns),
-        None
+    st.markdown("#### 👑 멘토 포인트 랭킹")
+    st.markdown(
+        '<p style="color:#6B7280;font-size:0.82rem;margin-bottom:1rem">'
+        '친구를 도와줄수록 멘토 포인트가 쌓여요! (본인 지목·미지목 제외)</p>',
+        unsafe_allow_html=True
     )
-    student_col = "본인 이름" if "본인 이름" in df_filtered.columns else None
 
-    if mentor_col:
-        mentor_df = df_filtered[
-            (df_filtered[mentor_col] != NO_MENTOR) &
-            (df_filtered[mentor_col] != "") &
-            (df_filtered[mentor_col].notna())
+    if mentor_col and "본인 이름" in df_f.columns:
+        mentor_df = df_f[
+            (df_f[mentor_col] != NO_MENTOR) &
+            (df_f[mentor_col] != "") &
+            (df_f[mentor_col].notna()) &
+            (df_f[mentor_col] != df_f["본인 이름"])
         ]
-        if student_col:
-            mentor_df = mentor_df[mentor_df[mentor_col] != mentor_df[student_col]]
-
         mentor_counts = (
-            mentor_df.groupby(mentor_col)
-            .size()
-            .reset_index(name="멘토 점수")
-            .sort_values("멘토 점수", ascending=False)
-            .head(15)
+            mentor_df.groupby(mentor_col).size()
+            .reset_index(name="포인트")
+            .sort_values("포인트", ascending=False)
         )
 
-        if not mentor_counts.empty:
-            mentor_counts.insert(0, "순위", range(1, len(mentor_counts) + 1))
-            medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-            mentor_counts["순위"] = mentor_counts["순위"].map(
-                lambda x: medals.get(x, str(x))
-            )
+        if mentor_counts.empty:
+            st.info("아직 멘토 지목 데이터가 없습니다.")
+        else:
+            col_chart, col_list = st.columns([3, 2])
 
-            col_chart, col_table = st.columns([3, 2])
+            with col_list:
+                top15 = mentor_counts.head(15)
+                for i, row in enumerate(top15.itertuples()):
+                    rank_icons = ["🥇","🥈","🥉"] + ["🌟"] * 12
+                    r_icon = rank_icons[i]
+                    bar_pct = int(row.포인트 / top15["포인트"].max() * 100)
+                    st.markdown(f"""
+                    <div class="mentor-card">
+                        <div class="m-rank">{r_icon}</div>
+                        <div class="m-info">
+                            <div class="m-name">{getattr(row, mentor_col)}</div>
+                            <div style="background:#0F0F1A;border-radius:4px;height:6px;margin:0.3rem 0">
+                                <div style="width:{bar_pct}%;height:6px;border-radius:4px;background:linear-gradient(90deg,#7C3AED,#A78BFA)"></div>
+                            </div>
+                        </div>
+                        <div class="m-score">+{row.포인트}pt</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
             with col_chart:
-                fig2 = px.bar(
-                    mentor_counts.head(10),
-                    x="멘토 점수",
-                    y=mentor_col,
+                top10 = mentor_counts.head(10)
+                fig2 = go.Figure(go.Bar(
+                    x=top10["포인트"],
+                    y=top10[mentor_col],
                     orientation="h",
-                    color="멘토 점수",
-                    color_continuous_scale="Greens",
-                    text="멘토 점수",
-                    title="멘토 점수 TOP 10"
-                )
-                fig2.update_traces(textposition="outside")
+                    marker=dict(
+                        color=top10["포인트"],
+                        colorscale=[[0,"#4C1D95"],[1,"#A78BFA"]],
+                        showscale=False,
+                    ),
+                    text=top10["포인트"].astype(str) + "pt",
+                    textposition="outside",
+                    textfont=dict(color="#A78BFA", size=12),
+                ))
                 fig2.update_layout(
-                    yaxis={"categoryorder": "total ascending"},
-                    showlegend=False,
-                    height=400,
-                    coloraxis_showscale=False
+                    paper_bgcolor="#0F0F1A", plot_bgcolor="#0F0F1A",
+                    font_color="#9CA3AF",
+                    xaxis=dict(gridcolor="#1E1E3A", tickfont_color="#6B7280"),
+                    yaxis=dict(
+                        categoryorder="total ascending",
+                        tickfont=dict(color="#E0E7FF", size=12),
+                    ),
+                    height=420, margin=dict(t=10, b=10, l=10, r=60),
+                    title=dict(text="TOP 10 멘토", font=dict(color="#A78BFA", size=14), x=0.5),
                 )
                 st.plotly_chart(fig2, use_container_width=True)
-
-            with col_table:
-                st.dataframe(
-                    mentor_counts.rename(columns={mentor_col: "멘토 이름"}),
-                    hide_index=True,
-                    use_container_width=True
-                )
-        else:
-            st.info("아직 멘토 지목 데이터가 없습니다.")
     else:
         st.info("멘토 이름 컬럼을 찾을 수 없습니다.")
 
-# ────────── 탭 4: 반별 참여율 ──────────
+# ══════════════════════════════════════════════
+#  탭 4: 반별 현황
+# ══════════════════════════════════════════════
 with tab4:
-    st.subheader("👥 반별 참여 현황")
+    st.markdown("#### 🏰 반별 퀘스트 현황")
 
-    student_col = "본인 이름" if "본인 이름" in df_filtered.columns else None
-    if "반" in df_filtered.columns and student_col:
-        col_a, col_b = st.columns(2)
-        for idx, (class_name, students) in enumerate(ALL_STUDENTS.items()):
-            if class_name not in class_filter:
-                continue
-            class_df = df_filtered[df_filtered["반"] == class_name]
-            submitted = class_df[student_col].nunique()
-            total = len(students)
-            rate = submitted / total * 100 if total > 0 else 0
-            submitted_names = set(class_df[student_col].unique())
-            not_submitted = [s for s in students if s not in submitted_names]
+    col_5, col_6 = st.columns(2)
 
-            target_col = col_a if idx == 0 else col_b
-            with target_col:
-                st.markdown(f"### {class_name}")
-                st.metric("참여율", f"{rate:.0f}%", f"{submitted}/{total}명 제출")
-                st.progress(rate / 100)
-                if not_submitted:
-                    with st.expander(f"미제출 학생 {len(not_submitted)}명 보기"):
-                        st.write(", ".join(not_submitted))
-                else:
-                    st.success("✅ 전원 제출 완료!")
-    else:
-        st.info("반 또는 학생 이름 데이터를 찾을 수 없습니다.")
+    for col_widget, class_name in zip([col_5, col_6], ALL_STUDENTS.keys()):
+        if class_name not in class_filter:
+            continue
 
-# ────────── 탭 5: 시간대별 응답 ──────────
-with tab5:
-    st.subheader("📅 시간대별 응답 분포")
+        students = ALL_STUDENTS[class_name]
+        class_df = df_f[df_f["반"] == class_name] if "반" in df_f.columns else df_f
+        total = len(students)
 
-    if "타임스탬프" in df_filtered.columns:
-        time_df = df_filtered.dropna(subset=["타임스탬프"]).copy()
-        time_df["시간대"] = time_df["타임스탬프"].dt.hour
-        time_df["날짜"] = time_df["타임스탬프"].dt.date
+        # 제출자 계산
+        submitted_set = set()
+        if "본인 이름" in class_df.columns:
+            submitted_set = set(class_df["본인 이름"].unique())
+        submitted_cnt = len([s for s in students if s in submitted_set])
+        rate = submitted_cnt / total * 100 if total > 0 else 0
 
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            hour_counts = time_df.groupby("시간대").size().reset_index(name="응답 수")
-            fig3 = px.bar(
-                hour_counts, x="시간대", y="응답 수",
-                title="시간대별 응답 수 (0~23시)",
-                color="응답 수", color_continuous_scale="Oranges"
-            )
-            fig3.update_layout(coloraxis_showscale=False)
+        # 반 평균 레벨
+        levels = []
+        for name in students:
+            s_cnt = class_df[class_df["본인 이름"] == name]["차시"].nunique() if "본인 이름" in class_df.columns else 0
+            lv, *_ = get_level_info(s_cnt)
+            levels.append(lv)
+        avg_lv = sum(levels) / len(levels) if levels else 0
+
+        with col_widget:
+            st.markdown(f"""
+            <div class="class-card">
+                <h3>🏰 {class_name}</h3>
+                <div style="display:flex;gap:1rem;margin-bottom:1rem">
+                    <div style="flex:1;text-align:center">
+                        <div style="font-size:1.8rem;font-weight:900;color:#E0E7FF">{submitted_cnt}/{total}</div>
+                        <div style="font-size:0.72rem;color:#6B7280">참여 학생</div>
+                    </div>
+                    <div style="flex:1;text-align:center">
+                        <div style="font-size:1.8rem;font-weight:900;color:#A78BFA">{avg_lv:.1f}</div>
+                        <div style="font-size:0.72rem;color:#6B7280">평균 레벨</div>
+                    </div>
+                    <div style="flex:1;text-align:center">
+                        <div style="font-size:1.8rem;font-weight:900;color:#34D399">{rate:.0f}%</div>
+                        <div style="font-size:0.72rem;color:#6B7280">참여율</div>
+                    </div>
+                </div>
+                <div style="background:#0F0F1A;border-radius:8px;height:12px;overflow:hidden;margin-bottom:0.5rem">
+                    <div style="width:{rate}%;height:12px;border-radius:8px;
+                        background:linear-gradient(90deg,#7C3AED,#34D399);
+                        transition:width 0.5s ease"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # 미제출 학생
+            not_submitted = [s for s in students if s not in submitted_set]
+            if not_submitted:
+                with st.expander(f"⚠️ 미참여 학생 {len(not_submitted)}명"):
+                    st.markdown(
+                        '<div style="color:#9CA3AF;font-size:0.85rem">' +
+                        "  ·  ".join(not_submitted) +
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.markdown(
+                    '<div style="color:#34D399;font-size:0.85rem;'
+                    'text-align:center;padding:0.5rem">✅ 전원 퀘스트 참여 완료!</div>',
+                    unsafe_allow_html=True
+                )
+
+        # 레벨 분포 파이
+        lv_dist = {f"Lv.{lv}": 0 for _, _, lv, _, _, _ in LEVEL_TABLE}
+        for name in students:
+            s_cnt = class_df[class_df["본인 이름"] == name]["차시"].nunique() if "본인 이름" in class_df.columns else 0
+            lv, *_ = get_level_info(s_cnt)
+            lv_dist[f"Lv.{lv}"] = lv_dist.get(f"Lv.{lv}", 0) + 1
+
+        fig3 = go.Figure(go.Pie(
+            labels=list(lv_dist.keys()),
+            values=list(lv_dist.values()),
+            hole=0.55,
+            marker=dict(colors=["#EF9A9A","#FFB74D","#FFF176","#81C784","#64B5F6"]),
+            textfont=dict(color="#0F0F1A", size=11),
+        ))
+        fig3.update_layout(
+            paper_bgcolor="#0F0F1A",
+            font_color="#9CA3AF",
+            showlegend=True,
+            legend=dict(font=dict(color="#9CA3AF", size=10)),
+            height=240,
+            margin=dict(t=10, b=10, l=10, r=10),
+            annotations=[dict(
+                text=f"Lv.{avg_lv:.1f}", x=0.5, y=0.5, showarrow=False,
+                font=dict(size=18, color="#E0E7FF", family="Noto Sans KR")
+            )],
+        )
+        with col_widget:
             st.plotly_chart(fig3, use_container_width=True)
-
-        with col_t2:
-            date_counts = time_df.groupby("날짜").size().reset_index(name="응답 수")
-            fig4 = px.line(
-                date_counts, x="날짜", y="응답 수",
-                title="날짜별 응답 추이", markers=True
-            )
-            st.plotly_chart(fig4, use_container_width=True)
-    else:
-        st.info("타임스탬프 데이터를 찾을 수 없습니다.")
