@@ -4,6 +4,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import re
+
 
 # ────────────────────────────────────────────────
 #  설정
@@ -357,7 +359,16 @@ if df.empty:
     st.stop()
 
 df_f = df[df["반"].isin(class_filter)].copy() if "반" in df.columns and class_filter else df.copy()
-all_lessons = sorted(df_f["차시"].unique().tolist()) if "차시" in df_f.columns else []
+def lesson_sort_key(s):
+    # 차시명에서 첫 번째 숫자를 추출해서 정렬 기준으로 사용
+    # 예: "1차시 - 수열의 뜻" → 1, "11차시 - 합의 기호" → 11
+    m = re.search(r'\d+', str(s))
+    return int(m.group()) if m else 9999
+
+all_lessons = sorted(
+    df_f["차시"].unique().tolist(),
+    key=lesson_sort_key
+) if "차시" in df_f.columns else []
 mentor_col = next((c for c in ["도움 준 멘토 이름", "멘토 이름"] if c in df_f.columns), None)
 total_students = sum(len(v) for k, v in ALL_STUDENTS.items() if k in class_filter)
 submitted_names = df_f["본인 이름"].nunique() if "본인 이름" in df_f.columns else 0
