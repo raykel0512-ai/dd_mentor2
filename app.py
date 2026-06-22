@@ -456,18 +456,20 @@ with tab2:
             # 학생별 데이터 수집
             student_data = []
             for name in students:
-                cnt = class_df[class_df["본인 이름"] == name]["차시"].nunique()
+                s_df = class_df[class_df["본인 이름"] == name]
+                cnt = s_df["차시"].nunique()
+                submitted_lessons = set(s_df["차시"].unique())
                 lv, icon, title, bg, fg, xp_in, xp_need = get_level_info(cnt)
-                student_data.append((name, cnt, lv, icon, title, bg, fg, xp_in, xp_need))
+                student_data.append((name, cnt, lv, icon, title, bg, fg, xp_in, xp_need, submitted_lessons))
             student_data.sort(key=lambda x: (-x[2], -x[1]))
 
+            # ── 레벨 카드 ──
             col_a, col_b = st.columns(2)
-            for i, (name, cnt, lv, icon, title, bg, fg, xp_in, xp_need) in enumerate(student_data):
+            for i, (name, cnt, lv, icon, title, bg, fg, xp_in, xp_need, _) in enumerate(student_data):
                 pct = min(int(xp_in / xp_need * 100), 100)
                 is_max = (lv == 5 and cnt >= 15)
                 border = f"border-color:{fg}" if is_max else ""
                 suffix = "✨ 전설 달성!" if is_max else f"다음 레벨까지 {xp_need - xp_in} XP"
-
                 card = f"""
                 <div class="player-card" style="{border}">
                     <div class="top-row">
@@ -490,6 +492,113 @@ with tab2:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
+            # ── 차시별 제출 현황 표 ──
+            st.markdown(f"#### 📋 {class_name} 차시별 제출 현황")
+
+            # 피벗 데이터 생성
+            rows = []
+            for name, cnt, lv, icon, title, bg, fg, xp_in, xp_need, submitted_lessons in student_data:
+                row = {
+                    "이름": name,
+                    "레벨": f"Lv.{lv} {icon}",
+                    "제출 수": f"{cnt}/{len(all_lessons)}",
+                }
+                for lesson in all_lessons:
+                    # 차시명 짧게 (앞 숫자만 or 앞 6자)
+                    short = lesson[:6] if len(lesson) > 6 else lesson
+                    row[short] = "✅" if lesson in submitted_lessons else "❌"
+                rows.append(row)
+
+            pivot_df = pd.DataFrame(rows)
+            st.dataframe(pivot_df, hide_index=True, use_container_width=True)
+
+            # ── 미제출 요약 ──
+            with st.expander("⚠️ 미제출 상세 보기"):
+                any_missing = False
+                for name, cnt, lv, icon, title, bg, fg, xp_in, xp_need, submitted_lessons in student_data:
+                    missing = [l for l in all_lessons if l not in submitted_lessons]
+                    if missing:
+                        any_missing = True
+                        short_missing = [l[:8] for l in missing]
+                        st.markdown(
+                            f'<p style="font-size:0.95rem;margin:0.3rem 0">'
+                            f'<b>{name}</b> · 미제출 {len(missing)}개: '
+                            f'<span style="color:#DC2626">{", ".join(short_missing)}</span></p>',
+                            unsafe_allow_html=True
+                        )
+                if not any_missing:
+                    st.markdown('<p style="color:#16A34A;font-weight:700">✅ 전원 모든 차시 제출 완료!</p>', unsafe_allow_html=True)
+
+            # ── 엑셀 다운로드 ──
+            import io
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+
+            def make_excel(student_data, all_lessons, class_name):
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = class_name[:30]
+
+                # 헤더 스타일
+                header_fill = PatternFill("solid", fgColor="111827")
+                header_font = Font(color="FFFFFF", bold=True, size=11)
+                center = Alignment(horizontal="center", vertical="center")
+                thin = Side(style="thin", color="E5E7EB")
+                border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+                # 헤더 행
+                headers = ["이름", "레벨", "제출 수"] + [l[:8] for l in all_lessons]
+                for col_idx, h in enumerate(headers, 1):
+                    cell = ws.cell(row=1, column=col_idx, value=h)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = center
+                    cell.border = border
+
+                # 데이터 행
+                green_fill = PatternFill("solid", fgColor="D1FAE5")
+                red_fill   = PatternFill("solid", fgColor="FEE2E2")
+
+                for row_idx, (name, cnt, lv, icon, title, bg, fg, xp_in, xp_need, submitted_lessons) in enumerate(student_data, 2):
+                    row_vals = [name, f"Lv.{lv} {icon}", f"{cnt}/{len(all_lessons)}"]
+                    for lesson in all_lessons:
+                        row_vals.append("✅" if lesson in submitted_lessons else "❌")
+
+                    for col_idx, val in enumerate(row_vals, 1):
+                        cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                        cell.alignment = center
+                        cell.border = border
+                        # 제출 여부 셀 색칠
+                        if col_idx > 3:
+                            cell.fill = green_fill if val == "✅" else red_fill
+
+                # 열 너비 조정
+                ws.column_dimensions["A"].width = 12
+                ws.column_dimensions["B"].width = 14
+                ws.column_dimensions["C"].width = 8
+                for col_idx in range(4, len(headers) + 1):
+                    ws.column_dimensions[get_column_letter(col_idx)].width = 9
+
+                # 행 높이
+                for row_idx in range(1, len(student_data) + 2):
+                    ws.row_dimensions[row_idx].height = 22
+
+                buf = io.BytesIO()
+                wb.save(buf)
+                buf.seek(0)
+                return buf.getvalue()
+
+            excel_data = make_excel(student_data, all_lessons, class_name)
+            st.download_button(
+                label=f"📥 {class_name} 제출 현황 엑셀 다운로드",
+                data=excel_data,
+                file_name=f"수열_제출현황_{class_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"dl_{class_name}"
+            )
+
+            st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════
 #  탭 3: 멘토 랭킹
 # ══════════════════════════════════════
